@@ -1,0 +1,211 @@
+:root {
+    --primary-color: #6f42c1;
+    --primary-hover: #59359a;
+    --background-color: #f0f2f5;
+    --card-background: #ffffff;
+    --text-color: #212529;
+    --text-muted: #6c757d;
+    --border-color: #dee2e6;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--background-color);
+    overflow: hidden;
+}
+
+#app-container {
+    height: 100vh;
+}
+
+.view {
+    display: none;
+    height: 100%;
+    width: 100%;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+.view.active {
+    display: flex;
+    opacity: 1;
+}
+
+/* --- Home View --- */
+#home-view {
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #7c4dff 0%, #3f51b5 100%);
+}
+.home-card {
+    background: var(--card-background);
+    padding: 2.5rem 3rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    max-width: 600px;
+    width: 90%;
+}
+.logo {
+    font-weight: 700;
+    color: var(--primary-color);
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+.tagline {
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+}
+.input-group-wrapper .form-control, 
+.input-group-wrapper .btn {
+    padding: 0.75rem 1rem;
+    height: 50px;
+    font-size: 1rem;
+}
+#create-room-btn {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+#create-room-btn:hover, #create-room-btn:focus {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+    box-shadow: none;
+}
+#url-error {
+    text-align: left;
+    font-weight: 500;
+}
+
+/* --- Room View --- */
+#room-view {
+    flex-direction: row;
+}
+.video-main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: #000;
+}
+.player-container {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+}
+.player-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+.video-info {
+    padding: 1rem 1.5rem;
+    background: var(--card-background);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.video-info h4 {
+    margin: 0;
+    font-size: 1.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sidebar {
+    width: 380px;
+    flex-shrink: 0;
+    background: var(--card-background);
+    border-left: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+}
+.sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 1rem;
+    gap: 1rem;
+}
+.sidebar-panel {
+    background: var(--background-color);
+    border-radius: 8px;
+    padding: 1rem;
+}
+.sidebar-panel h5 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--primary-color);
+}
+.ai-panel .list-group-item {
+    background: none;
+    border: none;
+    padding: 0.5rem 0;
+    font-size: 0.9rem;
+}
+.chat-panel {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+    background: none;
+}
+.chat-messages {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+}
+.chat-messages div {
+    margin-bottom: 0.5rem;
+    word-wrap: break-word;
+}
+.chat-messages strong {
+    color: var(--primary-color);
+}
+.chat-input-area {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+#nickname-input {
+    flex-basis: 100px;
+    flex-grow: 0;
+}
+#chat-input {
+    flex-grow: 1;
+}
+.invite-panel {
+    padding: 0;
+    background: none;
+}
+#copy-link-btn:focus {
+    box-shadow: none;
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 992px) {
+    #room-view {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        border-left: none;
+        border-top: 1px solid var(--border-color);
+    }
+    .video-main {
+        aspect-ratio: 16 / 9;
+        height: auto;
+    }
+}
