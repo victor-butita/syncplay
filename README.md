@@ -5,7 +5,6 @@ Watch videos with anyone, anywhere. Perfectly in sync.
 SyncPlay is a real-time watch party application that allows multiple users to watch a video together in perfect synchronization. Room creation is instantaneous, and features like live chat and AI-powered conversation starters create an engaging shared experience.
 
 
-*(Feel free to replace this with your own screenshot)*
 
 ## Features
 
