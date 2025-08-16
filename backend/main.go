@@ -1,53 +1,64 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
-type CreateRoomRequest struct {
-	URL string `json:"url"`
+// spaHandler implements the http.Handler interface and serves our Single Page Application.
+type spaHandler struct {
+	staticPath string
+	indexPath  string
 }
 
-func createRoomHandler(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	var req CreateRoomRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error": "Invalid request body"}`, http.StatusBadRequest)
-		return
-	}
-
-	videoID := getYouTubeID(req.URL)
-	if videoID == "" {
-		http.Error(w, `{"error": "Invalid or unsupported YouTube URL"}`, http.StatusBadRequest)
-		return
-	}
-
-	videoTitle, err := getYouTubeVideoInfo(videoID)
+// ServeHTTP handles all requests. If a file exists at the path, it serves it.
+// Otherwise, it serves the index.html file. This is the correct way to handle SPA routing.
+func (h spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Get the absolute path to prevent directory traversal
+	path, err := filepath.Abs(r.URL.Path)
 	if err != nil {
-		log.Printf("Failed to get video info for ID %s: %v", videoID, err)
-		http.Error(w, `{"error": "Could not retrieve video information"}`, http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	room, err := hub.createRoom(videoID, videoTitle)
-	if err != nil {
-		log.Printf("Failed to create room with AI: %v", err)
-		http.Error(w, `{"error": "Failed to generate room details"}`, http.StatusInternalServerError)
+	// Prepend the static folder path
+	path = filepath.Join(h.staticPath, path)
+
+	// Check if the file exists
+	_, err = os.Stat(path)
+	if os.IsNotExist(err) || strings.HasSuffix(path, "/") {
+		// File does not exist, serve index.html
+		log.Printf("[HTTP-SPA] Serving index.html for path: %s", r.URL.Path)
+		http.ServeFile(w, r, filepath.Join(h.staticPath, h.indexPath))
+		return
+	} else if err != nil {
+		// If we got a different error, return a server error
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"roomId": room.ID})
+	// LOGGING: Log static file serving
+	log.Printf("[HTTP-STATIC] Serving static file: %s", r.URL.Path)
+	// Otherwise, serve the static file
+	http.FileServer(http.Dir(h.staticPath)).ServeHTTP(w, r)
 }
 
 func main() {
+	// LOGGING: Announce server start
+	log.Println("-----------------------------------------")
+	log.Println("Initializing SyncPlay Server...")
+	log.Println("-----------------------------------------")
+
 	if err := godotenv.Load(); err != nil {
-		log.Println("Note: .env file not found, expecting environment variables.")
+		log.Println("[WARNING] .env file not found. AI features require a GEMINI_API_KEY.")
+	} else {
+		log.Println("[INFO] .env file loaded successfully.")
 	}
 
 	hub := newHub()
@@ -55,31 +66,22 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.HandleFunc("/create", func(w http.ResponseWriter, r *http.Request) {
-		createRoomHandler(hub, w, r)
-	}).Methods("POST")
-
+	// The WebSocket handler is now the only API endpoint
 	r.HandleFunc("/ws/{roomId}", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(hub, w, r)
 	})
 
-	staticFileServer := http.FileServer(http.Dir("../frontend"))
-	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		staticPath := "../frontend" + r.URL.Path
-		if _, err := os.Stat(staticPath); os.IsNotExist(err) {
-			http.ServeFile(w, r, "../frontend/index.html")
-		} else {
-			staticFileServer.ServeHTTP(w, r)
-		}
-	})
+	// This is the new, correct SPA handler
+	spa := spaHandler{staticPath: "../frontend", indexPath: "index.html"}
+	r.PathPrefix("/").Handler(spa)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Println("Server starting on http://localhost:" + port)
+	log.Printf("[INFO] Server starting on http://localhost:%s", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("ListenAndServe error: %v", err)
+		log.Fatalf("[FATAL] ListenAndServe error: %v", err)
 	}
 }

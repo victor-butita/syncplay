@@ -39,7 +39,7 @@ func generateIcebreakers(videoTitle string) ([]string, error) {
 	}
 
 	// The stable v1 API endpoint, not v1beta
-	url := "https://generativelanguage.googleapis.com/v1/models/gemini-1.0-pro:generateContent?key=" + apiKey
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey
 
 	prompt := fmt.Sprintf("Based on the YouTube video title '%s', generate exactly 3 short, fun, and engaging conversation starters or 'icebreakers' for a watch party. Format them as a numbered list, like '1. Question one?'. Do not add any extra introduction or conclusion.", videoTitle)
 

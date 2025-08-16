@@ -1,23 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
+// ... (Struct definitions are the same) ...
 type Room struct {
-	ID          string
-	Clients     map[*Client]bool
-	VideoID     string
-	VideoTitle  string
-	Icebreakers []string
-	LastState   PlayerState
+	ID          string           `json:"id"`
+	Clients     map[*Client]bool `json:"-"`
+	VideoID     string           `json:"videoId"`
+	VideoTitle  string           `json:"videoTitle"`
+	Icebreakers []string         `json:"icebreakers"`
+	LastState   PlayerState      `json:"lastState"`
 	mu          sync.RWMutex
 }
-
 type Hub struct {
 	rooms      map[string]*Room
 	register   chan *Client
@@ -40,28 +39,27 @@ func (h *Hub) run() {
 		select {
 		case client := <-h.register:
 			h.mu.RLock()
-			room, ok := h.rooms[client.roomId]
+			room := h.rooms[client.roomId]
 			h.mu.RUnlock()
-			if ok {
+			if room != nil {
 				room.mu.Lock()
 				room.Clients[client] = true
 				room.mu.Unlock()
-				log.Printf("Client %s registered to room %s", client.conn.RemoteAddr(), client.roomId)
-			} else {
-				log.Printf("Room %s not found for client %s", client.roomId, client.conn.RemoteAddr())
-				client.conn.Close()
+				// LOGGING: Client registration
+				log.Printf("[HUB] Client registered to room %s. Total clients: %d", client.roomId, len(room.Clients))
 			}
 
 		case client := <-h.unregister:
 			h.mu.RLock()
-			room, ok := h.rooms[client.roomId]
+			room := h.rooms[client.roomId]
 			h.mu.RUnlock()
-			if ok {
+			if room != nil {
 				room.mu.Lock()
 				if _, ok := room.Clients[client]; ok {
 					delete(room.Clients, client)
 					close(client.send)
-					log.Printf("Client %s unregistered from room %s", client.conn.RemoteAddr(), client.roomId)
+					// LOGGING: Client unregistration
+					log.Printf("[HUB] Client unregistered from room %s. Total clients: %d", client.roomId, len(room.Clients))
 				}
 				if len(room.Clients) == 0 {
 					go h.scheduleRoomDeletion(room.ID)
@@ -71,9 +69,9 @@ func (h *Hub) run() {
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
-			room, ok := h.rooms[message.RoomID]
+			room := h.rooms[message.RoomID]
 			h.mu.RUnlock()
-			if ok {
+			if room != nil {
 				room.mu.RLock()
 				for client := range room.Clients {
 					if client != message.Sender {
@@ -91,46 +89,91 @@ func (h *Hub) run() {
 	}
 }
 
-func (h *Hub) createRoom(videoID, videoTitle string) (*Room, error) {
-	roomID := uuid.New().String()[0:8]
-	icebreakers, err := generateIcebreakers(videoTitle)
-	if err != nil {
-		log.Printf("AI generation failed: %v. Using default icebreakers.", err)
-		icebreakers = []string{"What do you think will happen next?", "Who's your favorite character so far?", "Does this remind you of anything?"}
-	}
-
-	room := &Room{
-		ID:          roomID,
-		Clients:     make(map[*Client]bool),
-		VideoID:     videoID,
-		VideoTitle:  videoTitle,
-		Icebreakers: icebreakers,
-		LastState:   PlayerState{Status: -1, Time: 0},
-	}
-
-	h.mu.Lock()
-	h.rooms[roomID] = room
-	h.mu.Unlock()
-
-	return room, nil
-}
-
-func (h *Hub) scheduleRoomDeletion(roomID string) {
-	time.Sleep(5 * time.Minute)
+func (h *Hub) getOrCreateRoom(roomId, videoId string) *Room {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	room, ok := h.rooms[roomID]
-	if !ok {
-		return
+	if room, ok := h.rooms[roomId]; ok {
+		// LOGGING: Room found
+		log.Printf("[HUB] Found existing room %s", roomId)
+		return room
 	}
 
-	room.mu.RLock()
-	clientCount := len(room.Clients)
-	room.mu.RUnlock()
+	room := &Room{
+		ID:          roomId,
+		Clients:     make(map[*Client]bool),
+		VideoID:     videoId,
+		VideoTitle:  "Loading title...",
+		Icebreakers: []string{},
+		LastState:   PlayerState{Status: -1, Time: 0},
+	}
+	h.rooms[roomId] = room
+	// LOGGING: Room created
+	log.Printf("[HUB] Created new room %s for video %s", roomId, videoId)
 
-	if clientCount == 0 {
-		delete(h.rooms, roomID)
-		log.Printf("Room %s deleted due to inactivity.", roomID)
+	go h.fetchRoomData(room)
+
+	return room
+}
+
+func (h *Hub) fetchRoomData(room *Room) {
+	// LOGGING: Starting async data fetch
+	log.Printf("[ASYNC-%s] Starting data fetch for video %s", room.ID, room.VideoID)
+
+	title, err := getYouTubeVideoInfo(room.VideoID)
+	if err != nil {
+		log.Printf("[ASYNC-%s] ERROR getting video info: %v", room.ID, err)
+		title = "A YouTube Video"
+	} else {
+		log.Printf("[ASYNC-%s] SUCCESS got video title: \"%s\"", room.ID, title)
+	}
+
+	icebreakers, err := generateIcebreakers(title)
+	if err != nil {
+		log.Printf("[ASYNC-%s] ERROR generating AI icebreakers: %v", room.ID, err)
+		icebreakers = []string{"What do you think of the video so far?"}
+	} else {
+		log.Printf("[ASYNC-%s] SUCCESS got AI icebreakers.", room.ID)
+	}
+
+	room.mu.Lock()
+	room.VideoTitle = title
+	room.Icebreakers = icebreakers
+	room.mu.Unlock()
+
+	payload, _ := json.Marshal(room)
+	updateMessage, _ := json.Marshal(map[string]interface{}{
+		"type":    "roomInfoUpdate",
+		"payload": json.RawMessage(payload),
+	})
+
+	h.mu.RLock()
+	roomFromMap := h.rooms[room.ID]
+	h.mu.RUnlock()
+
+	if roomFromMap != nil {
+		roomFromMap.mu.RLock()
+		clientCount := len(roomFromMap.Clients)
+		for client := range roomFromMap.Clients {
+			client.send <- updateMessage
+		}
+		roomFromMap.mu.RUnlock()
+		// LOGGING: Sending update to clients
+		log.Printf("[ASYNC-%s] Sent roomInfoUpdate to %d clients.", room.ID, clientCount)
+	}
+}
+
+func (h *Hub) scheduleRoomDeletion(roomID string) {
+	// LOGGING: Scheduling room for deletion
+	log.Printf("[HUB] Room %s is empty. Scheduling for deletion in 5 minutes.", roomID)
+	time.Sleep(5 * time.Minute)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if room, ok := h.rooms[roomID]; ok {
+		if len(room.Clients) == 0 {
+			delete(h.rooms, roomID)
+			// LOGGING: Deleting room
+			log.Printf("[HUB] DELETED room %s due to inactivity.", roomID)
+		}
 	}
 }
